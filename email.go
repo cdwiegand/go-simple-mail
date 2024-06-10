@@ -251,6 +251,10 @@ func (server *SMTPServer) GetEncryptionType() Encryption {
 	return server.Encryption
 }
 
+func (client *SMTPClient) GetLastResponse() (int, string) {
+	return client.Client.lastResponseCode, client.Client.lastResponseMessage
+}
+
 // GetError returns the first email error encountered
 func (email *Email) GetError() error {
 	return email.Error

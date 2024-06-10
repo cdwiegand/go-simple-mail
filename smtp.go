@@ -43,6 +43,10 @@ type smtpClient struct {
 	localName  string // the name to use in HELO/EHLO
 	didHello   bool   // whether we've said HELO/EHLO
 	helloError error  // the error from the hello
+
+	// store last (SMTP) response
+	lastResponseCode    int
+	lastResponseMessage string
 }
 
 // newClient returns a new smtpClient using an existing connection and host as a
@@ -101,6 +105,10 @@ func (c *smtpClient) cmd(expectCode int, format string, args ...interface{}) (in
 	c.text.StartResponse(id)
 	defer c.text.EndResponse(id)
 	code, msg, err := c.text.ReadResponse(expectCode)
+	if expectCode != 0 {
+		c.lastResponseCode = code
+		c.lastResponseMessage = msg
+	}
 	return code, msg, err
 }
 
