@@ -928,6 +928,9 @@ func (server *SMTPServer) Connect() (*SMTPClient, error) {
 	if tlsConfig == nil {
 		tlsConfig = &tls.Config{ServerName: server.Host}
 	}
+	if server.Port <= 0 {
+		server.Port = 25 // default (and valid) SMTP port
+	}
 
 	// if there is a ConnectTimeout, setup the channel and do the connect under a goroutine
 	if server.ConnectTimeout != 0 {
