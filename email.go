@@ -220,8 +220,13 @@ func (dsn DSN) String() string {
 	return dsnTypes[dsn]
 }
 
-// NewMSG creates a new email. It uses UTF-8 by default. All charsets: http://webcheatsheet.com/HTML/character_sets_list.php
+// OBSOLETE: Use NewEmail instead. OLD: NewMSG creates a new email. It uses UTF-8 by default. All charsets: http://webcheatsheet.com/HTML/character_sets_list.php
 func NewMSG() *Email {
+	return NewEmail()
+}
+
+// NewEmail creates a new email. It uses UTF-8 by default. All charsets: http://webcheatsheet.com/HTML/character_sets_list.php
+func NewEmail() *Email {
 	email := &Email{
 		headers:        make(textproto.MIMEHeader),
 		Charset:        "UTF-8",
@@ -234,7 +239,24 @@ func NewMSG() *Email {
 	return email
 }
 
-// NewSMTPClient returns the client for send email
+// NewSMTPServer returns a definition for a given SMTP server
+func NewSMTPServer(host string, port int) *SMTPServer {
+	if port < 0 || port > 65535 { 
+		port = 25 
+	}
+	server := &SMTPServer{
+		Authentication: AuthAuto,
+		Encryption:     EncryptionNone,
+		ConnectTimeout: 10 * time.Second,
+		SendTimeout:    10 * time.Second,
+		Helo:           "localhost",
+		Host: host,
+		Port: port,
+	}
+	return server
+}
+
+// OBSOLETE: Use NewSMTPServer instead. OLD: NewSMTPClient returns the client for send email
 func NewSMTPClient() *SMTPServer {
 	server := &SMTPServer{
 		Authentication: AuthAuto,
