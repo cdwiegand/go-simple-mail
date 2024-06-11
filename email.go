@@ -405,15 +405,16 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 			continue
 		}
 
-		// check for more than one address
+		// for headers where only one value is permitted, remove that value if existing one non-empty
 		switch {
+		case header == "From" && len(email.from) > 0:
+			fallthrough
 		case header == "Sender" && len(email.sender) > 0:
 			fallthrough
 		case header == "Reply-To" && len(email.replyTo) > 0:
 			fallthrough
 		case header == "Return-Path" && len(email.returnPath) > 0:
-			email.Error = errors.New("Mail Error: There can only be one \"" + header + "\" address; Header: [" + header + "] Address: [" + addresses[i] + "]")
-			return email
+			email.headers.Del(header)
 		default:
 			// other address types can have more than one address
 		}
@@ -421,11 +422,6 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 		// save the address
 		switch header {
 		case "From":
-			// delete the current "From" to set the new
-			// when "From" need to be changed in the message
-			if len(email.from) > 0 && header == "From" {
-				email.headers.Del("From")
-			}
 			email.from = address
 		case "Sender":
 			email.sender = address
@@ -447,7 +443,7 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 			email.sender = ""
 			email.headers.Del("Sender")
 			email.Error = errors.New("Mail Error: From and Sender should not be set to the same address")
-			return email
+			// just a "warning", though, as we have corrected it it's still valid to be sent
 		}
 
 		// add Bcc only if AddBccToHeader is true
@@ -610,6 +606,27 @@ func (email *Email) SetBodyData(contentType ContentType, body []byte) *Email {
 	return email
 }
 
+func headerIsActuallyAddress(header string) bool {
+	switch header {
+	case "Sender":
+		fallthrough
+	case "From":
+		fallthrough
+	case "To":
+		fallthrough
+	case "Bcc":
+		fallthrough
+	case "Cc":
+		fallthrough
+	case "Reply-To":
+		fallthrough
+	case "Return-Path":
+		return true
+	default:
+		return false
+	}
+}
+
 // AddHeader adds the given "header" with the passed "value".
 func (email *Email) AddHeader(header string, values ...string) *Email {
 	if email.Error != nil {
@@ -627,31 +644,44 @@ func (email *Email) AddHeader(header string, values ...string) *Email {
 		header = textproto.CanonicalMIMEHeaderKey(header)
 	}
 
-	switch header {
-	case "Sender":
-		fallthrough
-	case "From":
-		fallthrough
-	case "To":
-		fallthrough
-	case "Bcc":
-		fallthrough
-	case "Cc":
-		fallthrough
-	case "Reply-To":
-		fallthrough
-	case "Return-Path":
-		email.AddAddresses(header, values...)
-	case "Date":
+	if headerIsActuallyAddress(header) {
+		email.AddAddresses(header, values...) // redirect call there instead to set fields on email
+	} else if header == "Date" {
 		if len(values) > 1 {
-			email.Error = errors.New("Mail Error: To many dates provided")
+			email.Error = errors.New("too many dates provided")
 			return email
 		}
 		email.SetDate(values[0])
-	case "List-Unsubscribe":
-		fallthrough
-	default:
+	} else {
 		email.headers[header] = values
+	}
+
+	return email
+}
+
+// SetHeader sets the given "header" with the passed "value", replacing any existing value
+func (email *Email) SetHeader(header string, value string) *Email {
+	if email.Error != nil {
+		return email
+	}
+
+	// check that there is actually a value
+	if value = "" {
+		email.Error = errors.New("no value provided; Header: [" + header + "]")
+		return email
+	}
+
+	if header != "MIME-Version" {
+		// Set header to correct canonical Mime
+		header = textproto.CanonicalMIMEHeaderKey(header)
+	}
+
+	if headerIsActuallyAddress(header) {
+		email.AddAddresses(header, value) // redirect call there instead to set fields on email
+	} else if header == "Date" {
+		email.SetDate(value)
+	} else {
+		email.headers.Set(header, value)
 	}
 
 	return email
@@ -667,6 +697,13 @@ func (email *Email) AddHeaders(headers textproto.MIMEHeader) *Email {
 		email.AddHeader(header, values...)
 	}
 
+	return email
+}
+
+func (email *Email) DelHeaders(names []string) *Email {
+	for _, n := range names {
+		email.headers.Del(n)
+	}
 	return email
 }
 
