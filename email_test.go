@@ -59,7 +59,7 @@ func TestSendRace(t *testing.T) {
 
 	// the smtpClient send to listener with the last response is after SendTimeout, so when this error is returned the test succeed.
 	err = msg.Send(smtpClient)
-	if err != nil && err.Error() != "Mail Error: SMTP Send timed out" {
+	if err != nil && err.Error() != "send timed out" {
 		log.Fatalf("couldn't send: %s", err.Error())
 	}
 }

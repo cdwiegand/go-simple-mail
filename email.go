@@ -381,7 +381,7 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 	}
 
 	if !found {
-		email.Error = errors.New("Mail Error: Invalid address header; Header: [" + header + "]")
+		email.Error = errors.New("invalid address header; Header: [" + header + "]")
 		return email
 	}
 
@@ -394,7 +394,7 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 			if !email.UseProvidedAddress {
 				parsed, err := mail.ParseAddress(addresses[i])
 				if err != nil {
-					email.Error = errors.New("Mail Error: " + err.Error() + "; Header: [" + header + "] Address: [" + addresses[i] + "]")
+					email.Error = errors.New("could not parse address: " + err.Error() + "; Header: [" + header + "] Address: [" + addresses[i] + "]")
 					return email
 				}
 
@@ -433,7 +433,7 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 			// check that the address was added to the recipients list
 			email.recipients, err = addAddress(email.recipients, address, email.AllowDuplicateAddress)
 			if err != nil {
-				email.Error = errors.New("Mail Error: " + err.Error() + "; Header: [" + header + "] Address: [" + addresses[i] + "]")
+				email.Error = errors.New("unable to add address: " + err.Error() + "; Header: [" + header + "] Address: [" + addresses[i] + "]")
 				return email
 			}
 		}
@@ -442,7 +442,7 @@ func (email *Email) AddAddresses(header string, addresses ...string) *Email {
 		if email.from != "" && email.sender != "" && email.from == email.sender {
 			email.sender = ""
 			email.headers.Del("Sender")
-			email.Error = errors.New("Mail Error: From and Sender should not be set to the same address")
+			email.Error = errors.New("headers From and Sender should not be set to the same address")
 			// just a "warning", though, as we have corrected it it's still valid to be sent
 		}
 
@@ -467,7 +467,7 @@ func addAddress(addressList []string, address string, allowDuplicateAddress bool
 		// loop through the address list to check for dups
 		for _, a := range addressList {
 			if address == a {
-				return addressList, errors.New("Mail Error: Address: [" + address + "] has already been added")
+				return addressList, errors.New("address: [" + address + "] has already been added")
 			}
 		}
 	}
@@ -480,6 +480,8 @@ type Priority int
 const (
 	// PriorityLow sets the email Priority to Low
 	PriorityLow Priority = iota
+	// PriorityNormal leaves the priority headers off
+	PriorityNormal
 	// PriorityHigh sets the email Priority to High
 	PriorityHigh
 )
@@ -505,6 +507,11 @@ func (email *Email) SetPriority(priority Priority) *Email {
 			"Importance":        {"High"},
 		})
 	default:
+		email.DelHeaders([]string{
+			"X-Priority",
+			"X-MSMail-Priority",
+			"Importance",
+		})
 	}
 
 	return email
@@ -524,7 +531,7 @@ func (email *Email) SetDate(dateTime string) *Email {
 	// Try to parse the provided date/time
 	dt, err := time.Parse(dateFormat, dateTime)
 	if err != nil {
-		email.Error = errors.New("Mail Error: Setting date failed with: " + err.Error())
+		email.Error = errors.New("failed to set date: " + err.Error())
 		return email
 	}
 
@@ -565,7 +572,7 @@ func (email *Email) SetDkim(options dkim.SigOptions) *Email {
 	err := dkim.Sign(&msg, options)
 
 	if err != nil {
-		email.Error = errors.New("Mail Error: cannot dkim sign message due: %s" + err.Error())
+		email.Error = errors.New("cannot dkim sign message due: %s" + err.Error())
 		return email
 	}
 
@@ -635,7 +642,7 @@ func (email *Email) AddHeader(header string, values ...string) *Email {
 
 	// check that there is actually a value
 	if len(values) < 1 {
-		email.Error = errors.New("Mail Error: no value provided; Header: [" + header + "]")
+		email.Error = errors.New("no value provided; Header: [" + header + "]")
 		return email
 	}
 
@@ -846,7 +853,7 @@ func (email *Email) SendEnvelopeFrom(from string, client *SMTPClient) error {
 	}
 
 	if len(email.recipients) < 1 {
-		return errors.New("Mail Error: No recipient specified")
+		return errors.New("no recipient specified")
 	}
 
 	var msg string
@@ -882,13 +889,13 @@ func dial(customConn net.Conn, host string, port string, encryption Encryption, 
 		}
 
 		if err != nil {
-			return nil, errors.New("Mail Error on dialing with encryption type " + encryption.String() + ": " + err.Error())
+			return nil, errors.New("error on dialing with encryption type " + encryption.String() + ": " + err.Error())
 		}
 	}
 
 	c, err = newClient(conn, host)
 	if err != nil {
-		return nil, fmt.Errorf("Mail Error on smtp dial: %w", err)
+		return nil, fmt.Errorf("error on smtp dial: %w", err)
 	}
 
 	return c, err
@@ -911,7 +918,7 @@ func smtpConnect(customConn net.Conn, host, port, helo string, encryption Encryp
 	// send Helo
 	if err = c.hi(helo); err != nil {
 		c.close()
-		return nil, fmt.Errorf("Mail Error on Hello: %w", err)
+		return nil, fmt.Errorf("error on EHLO/HELO: %w", err)
 	}
 
 	// STARTTLS if necessary
@@ -920,7 +927,7 @@ func smtpConnect(customConn net.Conn, host, port, helo string, encryption Encryp
 		if ok, _ := c.extension("STARTTLS"); ok {
 			if err = c.startTLS(config); err != nil {
 				c.close()
-				return nil, fmt.Errorf("Mail Error on STARTTLS: %w", err)
+				return nil, fmt.Errorf("error on STARTTLS: %w", err)
 			}
 		}
 	}
@@ -944,7 +951,7 @@ func (server *SMTPServer) getAuth(a string) (auth, error) {
 			afn = cramMD5Authfn(server.Username, server.Password)
 		}
 	default:
-		return nil, fmt.Errorf("Mail Error on determining auth type, %s is not supported", a)
+		return nil, fmt.Errorf("error on determining auth type, %s is not supported", a)
 	}
 	return afn, nil
 }
@@ -971,7 +978,7 @@ func (server *SMTPServer) validateAuth(c *smtpClient) error {
 		}
 		if err = c.authenticate(afn); err != nil {
 			c.close()
-			return fmt.Errorf("Mail Error on Auth: %w", err)
+			return fmt.Errorf("auth error: %w", err)
 		}
 	}
 	return nil
@@ -1006,7 +1013,7 @@ func (server *SMTPServer) Connect() (*SMTPClient, error) {
 				return nil, err
 			}
 		case <-time.After(server.ConnectTimeout):
-			return nil, errors.New("Mail Error: SMTP Connection timed out")
+			return nil, errors.New("connection timed out")
 		}
 	} else {
 		// no ConnectTimeout, just fire the connect
@@ -1058,10 +1065,10 @@ func (smtpClient *SMTPClient) Close() error {
 // 'from' must be an email address, recipients must be a slice of email address
 func SendMessage(from string, recipients []string, msg string, client *SMTPClient) error {
 	if from == "" {
-		return errors.New("Mail Error: No From email specifier")
+		return errors.New("no 'From' email specifier")
 	}
 	if len(recipients) < 1 {
-		return errors.New("Mail Error: No recipient specified")
+		return errors.New("no recipient specified")
 	}
 
 	return send(from, recipients, msg, client)
@@ -1097,12 +1104,12 @@ func send(from string, to []string, msg string, client *SMTPClient) error {
 				return sendError
 			case <-time.After(client.SendTimeout):
 				checkKeepAlive(client)
-				return errors.New("Mail Error: SMTP Send timed out")
+				return errors.New("send timed out")
 			}
 		}
 	}
 
-	return errors.New("Mail Error: No SMTP Client Provided")
+	return errors.New("no SMTP Client Provided")
 }
 
 func sendMailProcess(from string, to []string, msg string, c *SMTPClient) error {

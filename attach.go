@@ -63,7 +63,7 @@ func (email *Email) Attach(file *File) *Email {
 
 	attachTy, err := getAttachmentType(file, email.AllowEmptyAttachments)
 	if err != nil {
-		email.Error = errors.New("Mail Error: Failed to add attachment with following error: " + err.Error())
+		email.Error = errors.New("failed to add attachment with following error: " + err.Error())
 		return email
 	}
 
@@ -123,7 +123,7 @@ func (email *Email) attachB64(file *File) error {
 	// decode the string
 	dec, err := base64.StdEncoding.DecodeString(file.B64Data)
 	if err != nil {
-		return errors.New("Mail Error: Failed to decode base64 attachment with following error: " + err.Error())
+		return errors.New("failed to decode base64 attachment with following error: " + err.Error())
 	}
 
 	email.attachData(&File{
@@ -139,7 +139,7 @@ func (email *Email) attachB64(file *File) error {
 func (email *Email) attachFile(file *File) error {
 	data, err := ioutil.ReadFile(file.FilePath)
 	if err != nil {
-		return errors.New("Mail Error: Failed to add file with following error: " + err.Error())
+		return errors.New("failed to add file with following error: " + err.Error())
 	}
 
 	email.attachData(&File{

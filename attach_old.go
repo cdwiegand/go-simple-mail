@@ -14,7 +14,7 @@ func (email *Email) AddAttachment(file string, name ...string) *Email {
 	}
 
 	if len(name) > 1 {
-		email.Error = errors.New("Mail Error: Attach can only have a file and an optional name")
+		email.Error = errors.New("attach can only have a file and an optional name")
 		return email
 	}
 	
@@ -44,7 +44,7 @@ func (email *Email) AddInline(file string, name ...string) *Email {
 	}
 
 	if len(name) > 1 {
-		email.Error = errors.New("Mail Error: Inline can only have a file and an optional name")
+		email.Error = errors.New("inline can only have a file and an optional name")
 		return email
 	}
 	
