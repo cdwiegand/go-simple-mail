@@ -47,18 +47,93 @@ type smtpClient struct {
 	// store last (SMTP) response
 	lastResponseCode    int
 	lastResponseMessage string
+	
+	// Logger for all network activity.
+	DebugReader io.Writer
+	DebugWriter io.Writer
+}
+
+// setupConn sets the underlying network connection for the client.
+func setupConn(conn net.Conn, debugReader io.Writer, debugWriter io.Writer) *textproto.Conn {
+	var r io.Reader = conn
+	var w io.Writer = conn
+
+	if debugReader != nil {
+		r = io.TeeReader(r, debugReader)
+	}
+	if debugWriter != nil {
+		w = io.MultiWriter(w, debugWriter)
+	}
+
+	rwc := struct {
+		io.Reader
+		io.Writer
+		io.Closer
+	}{
+		Reader: r,
+		Writer: w,
+		Closer: conn,
+	}
+	return textproto.NewConn(rwc)
+}
+
+// newClient returns a new smtpClient using an existing connection and host as a
+// server name to be used when authenticating, and logs input and output if specified on smtpServer
+func (smtpServer *SMTPServer) newClient(conn net.Conn) (*smtpClient, error) {
+	text := setupConn(conn, smtpServer.DebugReader, smtpServer.DebugWriter)
+	_, _, err := text.ReadResponse(220)
+	if err != nil {
+		text.Close()
+		return nil, err
+	}
+
+	if smtpServer.Helo == "" {
+		smtpServer.Helo = "localhost"
+	}
+
+	c := &smtpClient{
+		text: text, 
+		conn: conn, 
+		serverName: smtpServer.Host, 
+		localName: smtpServer.Helo,
+		DebugReader: smtpServer.DebugReader,
+		DebugWriter: smtpServer.DebugWriter,
+	}
+	_, c.tls = conn.(*tls.Conn)
+	return c, nil
 }
 
 // newClient returns a new smtpClient using an existing connection and host as a
 // server name to be used when authenticating.
 func newClient(conn net.Conn, host string) (*smtpClient, error) {
-	text := textproto.NewConn(conn)
+	text := setupConn(conn,nil,nil)
 	_, _, err := text.ReadResponse(220)
 	if err != nil {
 		text.Close()
 		return nil, err
 	}
 	c := &smtpClient{text: text, conn: conn, serverName: host, localName: "localhost"}
+	_, c.tls = conn.(*tls.Conn)
+	return c, nil
+}
+
+// newClientWithDebug returns a new smtpClient using an existing connection and host as a
+// server name to be used when authenticating, and logs input and output
+func newClientWithDebug(conn net.Conn, host string, debugReader io.Writer, debugWriter io.Writer) (*smtpClient, error) {
+	text := setupConn(conn,debugReader, debugWriter)
+	_, _, err := text.ReadResponse(220)
+	if err != nil {
+		text.Close()
+		return nil, err
+	}
+	c := &smtpClient{
+		text: text,
+		conn: conn, 
+		serverName: host, 
+		localName: "localhost", 
+		DebugReader: debugReader, 
+		DebugWriter: debugWriter,
+	}
 	_, c.tls = conn.(*tls.Conn)
 	return c, nil
 }
@@ -158,7 +233,7 @@ func (c *smtpClient) startTLS(config *tls.Config) error {
 		return err
 	}
 	c.conn = tls.Client(c.conn, config)
-	c.text = textproto.NewConn(c.conn)
+	c.text = setupConn(c.conn, c.DebugReader, c.DebugWriter)
 	c.tls = true
 	return c.ehlo()
 }

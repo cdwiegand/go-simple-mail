@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/mail"
 	"net/textproto"
@@ -67,6 +68,10 @@ type SMTPServer struct {
 
 	// use custom dialer
 	CustomConn net.Conn
+
+	// Logger for all network activity.
+	DebugReader io.Writer
+	DebugWriter io.Writer
 }
 
 // SMTPClient represents a SMTP Client for send email
@@ -870,17 +875,17 @@ func (email *Email) SendEnvelopeFrom(from string, client *SMTPClient) error {
 }
 
 // dial connects to the smtp server with the request encryption type
-func dial(customConn net.Conn, host string, port string, encryption Encryption, config *tls.Config) (*smtpClient, error) {
+func dial(smtpServer *SMTPServer, config *tls.Config) (*smtpClient, error) {
 	var conn net.Conn
 	var err error
 	var c *smtpClient
 
-	if customConn != nil {
-		conn = customConn
+	if smtpServer.CustomConn != nil {
+		conn = smtpServer.CustomConn
 	} else {
-		address := host + ":" + port
+		address := fmt.Sprintf("%s:%d", smtpServer.Host, smtpServer.Port)
 		// do the actual dial
-		switch encryption {
+		switch smtpServer.Encryption {
 		// TODO: Remove EncryptionSSL check before launch v3
 		case EncryptionSSL, EncryptionSSLTLS:
 			conn, err = tls.Dial("tcp", address, config)
@@ -889,11 +894,11 @@ func dial(customConn net.Conn, host string, port string, encryption Encryption, 
 		}
 
 		if err != nil {
-			return nil, errors.New("error on dialing with encryption type " + encryption.String() + ": " + err.Error())
+			return nil, errors.New("error on dialing with encryption type " + smtpServer.Encryption.String() + ": " + err.Error())
 		}
 	}
 
-	c, err = newClient(conn, host)
+	c, err = smtpServer.newClient(conn)
 	if err != nil {
 		return nil, fmt.Errorf("error on smtp dial: %w", err)
 	}
@@ -903,27 +908,27 @@ func dial(customConn net.Conn, host string, port string, encryption Encryption, 
 
 // smtpConnect connects to the smtp server and starts TLS and passes auth
 // if necessary
-func smtpConnect(customConn net.Conn, host, port, helo string, encryption Encryption, config *tls.Config) (*smtpClient, error) {
+func smtpConnect(smtpServer *SMTPServer, config *tls.Config) (*smtpClient, error) {
 	// connect to the mail server
-	c, err := dial(customConn, host, port, encryption, config)
+	c, err := dial(smtpServer, config)
 
 	if err != nil {
 		return nil, err
 	}
 
-	if helo == "" {
-		helo = "localhost"
+	if smtpServer.Helo == "" {
+		smtpServer.Helo = "localhost"
 	}
 
 	// send Helo
-	if err = c.hi(helo); err != nil {
+	if err = c.hi(smtpServer.Helo); err != nil {
 		c.close()
 		return nil, fmt.Errorf("error on EHLO/HELO: %w", err)
 	}
 
 	// STARTTLS if necessary
 	// TODO: Remove EncryptionTLS check before launch v3
-	if encryption == EncryptionTLS || encryption == EncryptionSTARTTLS {
+	if smtpServer.Encryption == EncryptionTLS || smtpServer.Encryption == EncryptionSTARTTLS {
 		if ok, _ := c.extension("STARTTLS"); ok {
 			if err = c.startTLS(config); err != nil {
 				c.close()
@@ -1002,7 +1007,7 @@ func (server *SMTPServer) Connect() (*SMTPClient, error) {
 	if server.ConnectTimeout != 0 {
 		smtpConnectChannel = make(chan error, 2)
 		go func() {
-			c, err = smtpConnect(server.CustomConn, server.Host, fmt.Sprintf("%d", server.Port), server.Helo, server.Encryption, tlsConfig)
+			c, err = smtpConnect(server, tlsConfig)
 			// send the result
 			smtpConnectChannel <- err
 		}()
@@ -1017,7 +1022,7 @@ func (server *SMTPServer) Connect() (*SMTPClient, error) {
 		}
 	} else {
 		// no ConnectTimeout, just fire the connect
-		c, err = smtpConnect(server.CustomConn, server.Host, fmt.Sprintf("%d", server.Port), server.Helo, server.Encryption, tlsConfig)
+		c, err = smtpConnect(server, tlsConfig)
 		if err != nil {
 			return nil, err
 		}
