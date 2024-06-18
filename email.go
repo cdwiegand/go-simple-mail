@@ -673,7 +673,7 @@ func (email *Email) SetHeader(header string, value string) *Email {
 	}
 
 	// check that there is actually a value
-	if value = "" {
+	if value == "" {
 		email.Error = errors.New("no value provided; Header: [" + header + "]")
 		return email
 	}
